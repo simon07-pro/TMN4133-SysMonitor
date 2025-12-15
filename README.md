@@ -378,12 +378,6 @@ main
   docs(readme): update integration guidelines
   ```
 
-### Regular Checkpoints
-- Week 1: Complete individual modules
-- Week 2: Integration testing
-- Week 3: Error handling and polish
-- Week 4: Final testing and documentation
-
 ---
 
 ## Additional Resources
