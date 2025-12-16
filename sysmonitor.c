@@ -6,7 +6,8 @@
  * - Contributor 1: CPU Usage Module [IMPLEMENTED]
  * - Contributor 2: Memory Usage Module [TODO]
  * - Contributor 3: Top Processes Module [IMPLEMENTED]
- * - Contributor 4: Main Control & Continuous Monitoring [TODO]
+ * - Contributor 4: Main Control & Continuous Monitoring [IMPLEMENTED]
+
  */
 
 #include <stdio.h>
@@ -472,84 +473,140 @@ void listTopProcesses() {
 
 /**
  * displayMenu - Display main menu
- * TODO: Implement by Contributor 4
+ * DONE: Implement by Contributor 4
  */
 void displayMenu() {
-    printf("\n=== SysMonitor++ Main Menu ===\n");
-    printf("1. CPU Usage\n");
-    printf("2. Memory Usage\n");
-    printf("3. Top 5 Processes\n");
-    printf("4. Continuous Monitoring\n");
-    printf("5. Exit\n");
-    printf("Enter your choice: ");
+
+	int choice;
+
+	while (running) {
+		printf("\n=== SysMonitor++ Main Menu ===\n");
+		printf("1. CPU Usage\n");
+		printf("2. Memory Usage\n");
+		printf("3. Top 5 Processes\n");
+		printf("4. Continuous Monitoring\n");
+		printf("5. Exit\n");
+		printf("Enter your choice: ");
+
+		if (scanf("%d", &choice) != 1) {
+			printf("Invalid input. Please enter a number.\n");
+			while (getchar() != '\n'); //clear input buffer
+			continue;
+		}
+
+		switch(choice) {
+			case 1:
+				getCPUUsage();
+				break;
+
+			case 2:
+				getMemoryUsage();
+				break;
+			case 3:
+				listTopProcesses();
+				break;
+			case 4:
+				continuousMonitor(2);
+				break;
+			case 5:
+				running = 0;
+				writeLog("User exited from menu");
+				printf("Exiting...\n");
+				break;
+			default:
+				printf("Invalid choice. Please select 1-5.\n");
+		}
+	}
 }
 
 /**
  * continuousMonitor - Continuous monitoring mode
  * @interval: Refresh interval in seconds
- * TODO: Implement by Contributor 4
+ * DONE: Implement by Contributor 4
  */
 void continuousMonitor(int interval) {
-    printf("\n=== Continuous Monitoring Mode ===\n");
-    printf("[TODO] Continuous monitoring not yet implemented\n");
-    printf("Contributor 4: Implement this function\n");
-    printf("Requested interval: %d seconds\n\n", interval);
-    writeLog("Continuous monitoring called (not implemented)");
-}
+    writeLog("Continuous monitoring started");
 
+		while(running) {
+			system("clear"); //clear terminal
+
+			printf("=== Continuous Monitoring ===\n");
+			printf("Timestamp: %s\n\n", getCurrentTimestamp());
+
+			getCPUUsage();
+			getMemoryUsage();
+			listTopProcesses();
+
+			sleep(interval);
+		}
+
+	writeLog("Continuous monitoring stopped");
+}
 /**
- * main - Program entry point
- * TODO: Full implementation by Contributor 4
- * Current version: Basic testing framework for CPU module
+ * 
+ * DONE: Full implementation by Contributor 4
+ * 
  */
 int main(int argc, char *argv[]) {
     // Set up signal handler
     signal(SIGINT, handleSignal);
     
-    // Open log file
-    logFile = fopen("syslog.txt", "a");
+    logFile = fopen("syslog.txt","a");
     if (logFile == NULL) {
-        perror("Warning: Could not open syslog.txt");
+	perror("Warning: Could not open syslog.txt");
     } else {
-        writeLog("Session started");
+	writeLog("Session started");
     }
-    
-    // Simple argument parsing for testing CPU module
+
+
     if (argc == 1) {
-        // No arguments - test CPU module
-        printf("SysMonitor++ - Testing CPU Module\n");
-        printf("==================================\n");
-        getCPUUsage();  // Initialize
-        sleep(1);
-        getCPUUsage();  // Get actual reading
-        
-    } else if (argc == 3 && strcmp(argv[1], "-m") == 0) {
-        if (strcmp(argv[2], "cpu") == 0) {
-            getCPUUsage();
-            sleep(1);
-            getCPUUsage();
-        } else if (strcmp(argv[2], "mem") == 0) {
-            getMemoryUsage();
-        } else if (strcmp(argv[2], "proc") == 0) {
-            listTopProcesses();
-        } else {
-            fprintf(stderr, "Error: Invalid parameter '%s'. Use -m [cpu/mem/proc]\n", argv[2]);
-            displayHelp();
-        }
-    } else if (strcmp(argv[1], "-h") == 0) {
-        displayHelp();
-    } else {
-        fprintf(stderr, "Invalid option. Use -h for help.\n");
-        displayHelp();
+	displayMenu();
     }
-    
-    // Clean up
-    if (logFile != NULL) {
-        writeLog("Session ended");
-        fclose(logFile);
+
+    else if (argc == 2 && strcmp(argv[1], "-h") == 0) {
+	displayHelp();
     }
-    
-    return 0;
+
+    //mode selection
+    else if (argc == 3 && strcmp(argv[1], "-m") == 0){
+	if (strcmp(argv[2], "cpu") == 0) {
+		getCPUUsage();
+		sleep(1);
+		getCPUUsage();
+	}
+	else if (strcmp(argv[2], "mem") == 0) {
+		getMemoryUsage();
+	}
+	else if (strcmp(argv[2], "proc") == 0) {
+		listTopProcesses();
+	}
+	else {
+		printf("Error: Invalid Parameter. Use -m [cpu|mem|proc]\n");
+	}
+}
+
+	//continuous mode
+	else if (argc == 3 && strcmp(argv[1], "-c") == 0) {
+		int interval = atoi(argv[2]);
+
+		if (interval <= 0){
+			printf("Error: interval must be a positive integer\n");
+		}
+		else {
+			continuousMonitor(interval);
+		}
+	}
+
+	else {
+		printf("Invalid option: Use -h for help.\n");
+	}
+
+	if (logFile != NULL) {
+		writeLog("Session ended");
+		fclose(logFile);
+	}
+
+	return 0;
 }
 
 /*
