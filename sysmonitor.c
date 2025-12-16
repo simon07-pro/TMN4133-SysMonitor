@@ -5,7 +5,7 @@
  * Contributors:
  * - Contributor 1: CPU Usage Module [IMPLEMENTED]
  * - Contributor 2: Memory Usage Module [TODO]
- * - Contributor 3: Top Processes Module [TODO]
+ * - Contributor 3: Top Processes Module [IMPLEMENTED]
  * - Contributor 4: Main Control & Continuous Monitoring [TODO]
  */
 
@@ -19,6 +19,7 @@
 #include <dirent.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <ctype.h>
 
 // ==================== SHARED COMPONENTS ====================
 
@@ -247,15 +248,224 @@ void getMemoryUsage() {
 
 // ==================== TOP PROCESSES MODULE (CONTRIBUTOR 3) ====================
 
+//Structure to store process information
+struct ProcessInfo {   
+    int pid;
+    char name[256];
+    unsigned long utime;      // User mode CPU time
+    unsigned long stime;      // Kernel mode CPU time
+    unsigned long total_time; // Total CPU time
+    double cpu_percent;
+};
+
+/**
+ * isNumeric - Check if string contains only digits (helper for PID detection)
+ */
+int isNumeric(const char *str) {
+    if (str == NULL || *str == '\0') {
+        return 0;
+    }
+    
+    while (*str) {
+        if (*str < '0' || *str > '9') {
+            return 0;
+        }
+        str++;
+    }
+    return 1;
+}
+
+/**
+ * readProcessName - Read process name from /proc/[PID]/comm
+ */
+int readProcessName(int pid, char *name, size_t name_size) {
+    char path[256];
+    int fd;
+    ssize_t bytes_read;
+    
+    snprintf(path, sizeof(path), "/proc/%d/comm", pid);
+    
+    fd = open(path, O_RDONLY);
+    if (fd == -1) {
+        return -1;
+    }
+    
+    bytes_read = read(fd, name, name_size - 1);
+    close(fd);
+    
+    if (bytes_read <= 0) {
+        return -1;
+    }
+    
+    name[bytes_read] = '\0';
+    
+    // Remove newline if present
+    if (bytes_read > 0 && name[bytes_read - 1] == '\n') {
+        name[bytes_read - 1] = '\0';
+    }
+    
+    return 0;
+}
+
+/**
+ * readProcessStat - Read CPU time from /proc/[PID]/stat
+ */
+int readProcessStat(int pid, unsigned long *utime, unsigned long *stime) {
+    char path[256];
+    char buffer[4096];
+    int fd;
+    ssize_t bytes_read;
+    
+    snprintf(path, sizeof(path), "/proc/%d/stat", pid);
+    
+    fd = open(path, O_RDONLY);
+    if (fd == -1) {
+        return -1;
+    }
+    
+    bytes_read = read(fd, buffer, sizeof(buffer) - 1);
+    close(fd);
+    
+    if (bytes_read <= 0) {
+        return -1;
+    }
+    
+    buffer[bytes_read] = '\0';
+    
+    // Parse the stat file
+    // Format: pid (comm) state ppid pgrp session tty_nr tpgid flags minflt cminflt majflt cmajflt utime stime...
+    // We need fields 14 (utime) and 15 (stime)
+    
+    char *ptr = strchr(buffer, ')'); // Find end of process name
+    if (ptr == NULL) {
+        return -1;
+    }
+    
+    ptr += 2; // Skip ") "
+    
+    // Skip fields 3-13 (11 fields)
+    for (int i = 0; i < 11; i++) {
+        ptr = strchr(ptr, ' ');
+        if (ptr == NULL) {
+            return -1;
+        }
+        ptr++; // Move past space
+    }
+    
+    // Now we're at field 14 (utime)
+    if (sscanf(ptr, "%lu %lu", utime, stime) != 2) {
+        return -1;
+    }
+    
+    return 0;
+}
+
+/**
+ * compareProcesses - Comparison function for qsort (descending order by CPU time)
+ */
+int compareProcesses(const void *a, const void *b) {
+    struct ProcessInfo *proc_a = (struct ProcessInfo *)a;
+    struct ProcessInfo *proc_b = (struct ProcessInfo *)b;
+    
+    if (proc_b->total_time > proc_a->total_time) {
+        return 1;
+    } else if (proc_b->total_time < proc_a->total_time) {
+        return -1;
+    }
+    return 0;
+}
+
 /**
  * listTopProcesses - Display top 5 CPU-consuming processes
- * TODO: Implement by Contributor 3
  */
 void listTopProcesses() {
+    DIR *proc_dir;
+    struct dirent *entry;
+    struct ProcessInfo processes[1024];
+    int process_count = 0;
+    
     printf("\n=== Top 5 Active Processes ===\n");
-    printf("[TODO] Top processes module not yet implemented\n");
-    printf("Contributor 3: Implement this function\n\n");
-    writeLog("Top processes module called (not implemented)");
+    
+    // Open /proc directory
+    proc_dir = opendir("/proc");
+    if (proc_dir == NULL) {
+        perror("Error: Failed to open /proc directory");
+        writeLog("Error: Failed to open /proc directory");
+        return;
+    }
+    
+    // Read all process entries
+    while ((entry = readdir(proc_dir)) != NULL && process_count < 1024) {
+        // Check if entry name is numeric (PID)
+        if (!isNumeric(entry->d_name)) {
+            continue;
+        }
+        
+        int pid = atoi(entry->d_name);
+        unsigned long utime, stime;
+        
+        // Read process statistics
+        if (readProcessStat(pid, &utime, &stime) != 0) {
+            continue; // Process may have terminated, skip it
+        }
+        
+        // Read process name
+        char name[256];
+        if (readProcessName(pid, name, sizeof(name)) != 0) {
+            snprintf(name, sizeof(name), "[unknown]");
+        }
+        
+        // Store process information
+        processes[process_count].pid = pid;
+        strncpy(processes[process_count].name, name, sizeof(processes[process_count].name) - 1);
+        processes[process_count].name[sizeof(processes[process_count].name) - 1] = '\0';
+        processes[process_count].utime = utime;
+        processes[process_count].stime = stime;
+        processes[process_count].total_time = utime + stime;
+        
+        process_count++;
+    }
+    
+    closedir(proc_dir);
+    
+    if (process_count == 0) {
+        printf("No processes found.\n\n");
+        writeLog("No processes found");
+        return;
+    }
+    
+    // Sort processes by total CPU time (descending)
+    qsort(processes, process_count, sizeof(struct ProcessInfo), compareProcesses);
+    
+    // Calculate CPU percentages (relative to top process)
+    unsigned long max_time = processes[0].total_time;
+    if (max_time > 0) {
+        for (int i = 0; i < process_count; i++) {
+            processes[i].cpu_percent = (100.0 * processes[i].total_time) / max_time;
+        }
+    }
+    
+    // Display header
+    printf("%-10s %-30s %-15s %-10s\n", "PID", "Process Name", "CPU Time", "Relative %");
+    printf("=======================================================================\n");
+    
+    // Display top 5 processes
+    int display_count = (process_count < 5) ? process_count : 5;
+    for (int i = 0; i < display_count; i++) {
+        printf("%-10d %-30s %-15lu %.2f%%\n",
+               processes[i].pid,
+               processes[i].name,
+               processes[i].total_time,
+               processes[i].cpu_percent);
+    }
+    printf("\n");
+    
+    // Log the results
+    char log_msg[512];
+    snprintf(log_msg, sizeof(log_msg), 
+             "Top 5 processes displayed: Top process PID=%d (%s) with %lu CPU time",
+             processes[0].pid, processes[0].name, processes[0].total_time);
+    writeLog(log_msg);
 }
 
 // ==================== MAIN CONTROL & CONTINUOUS MONITORING (CONTRIBUTOR 4) ====================
