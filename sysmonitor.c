@@ -236,15 +236,76 @@ void getCPUUsage() {
 
 // ==================== MEMORY USAGE MODULE (CONTRIBUTOR 2) ====================
 
-/**
- * getMemoryUsage - Read memory statistics and display usage
- * TODO: Implement by Contributor 2
+/*
+ * Contributor 2: Memory Usage Module
+ * Responsibility: Implement memory monitoring functionality
+ * - Reads /proc/meminfo using system calls
+ * - Calculates Total, Used, and Free memory
+ * - Displays formatted output and logs to syslog.txt
  */
+
 void getMemoryUsage() {
+    int fd;
+    char buffer[2048];
+    ssize_t bytesRead;
+
+    // 1. Open /proc/meminfo using low-level system call
+    fd = open("/proc/meminfo", O_RDONLY);
+    if (fd == -1) {
+        perror("Error opening /proc/meminfo");
+        return;
+    }
+
+    // 2. Read the content into a buffer
+    // We read enough bytes to ensure we capture MemTotal and MemFree (usually at the top)
+    bytesRead = read(fd, buffer, sizeof(buffer) - 1);
+    if (bytesRead == -1) {
+        perror("Error reading /proc/meminfo");
+        close(fd);
+        return;
+    }
+    buffer[bytesRead] = '\0'; // Null-terminate the string
+    close(fd);
+
+    // 3. Parse MemTotal and MemFree
+    // We manually search for the substrings since we are using a raw buffer
+    long memTotal_kB = 0, memFree_kB = 0;
+    
+    char *totalPtr = strstr(buffer, "MemTotal:");
+    if (totalPtr) {
+        memTotal_kB = strtol(totalPtr + 9, NULL, 10); // Skip "MemTotal:" (9 chars)
+    }
+
+    char *freePtr = strstr(buffer, "MemFree:");
+    if (freePtr) {
+        memFree_kB = strtol(freePtr + 8, NULL, 10); // Skip "MemFree:" (8 chars)
+    }
+
+    // 4. Calculate Statistics (Convert kB to MB)
+    long memTotal_MB = memTotal_kB / 1024;
+    long memFree_MB = memFree_kB / 1024;
+    long memUsed_MB = memTotal_MB - memFree_MB; // Formula: Used = Total - Free
+    
+    double usagePercent = 0.0;
+    if (memTotal_MB > 0) {
+        usagePercent = ((double)memUsed_MB / memTotal_MB) * 100.0;
+    }
+
+    // 5. Display Output to Terminal
     printf("\n=== Memory Usage ===\n");
-    printf("[TODO] Memory module not yet implemented\n");
-    printf("Contributor 2: Implement this function\n\n");
-    writeLog("Memory module called (not implemented)");
+    printf("Total Memory:  %ld MB\n", memTotal_MB);
+    printf("Used Memory:   %ld MB\n", memUsed_MB);
+    printf("Free Memory:   %ld MB\n", memFree_MB);
+    printf("Usage:         %.1f%%\n", usagePercent);
+    printf("====================\n");
+
+    // 6. Logging
+    // Format the log string. Note: writeLog() is a shared helper from your leader.
+    char logMsg[256];
+    snprintf(logMsg, sizeof(logMsg), "Memory - Total: %ldMB, Used: %ldMB, Free: %ldMB (%.1f%%)", 
+             memTotal_MB, memUsed_MB, memFree_MB, usagePercent);
+    
+    writeLog(logMsg); 
 }
 
 // ==================== TOP PROCESSES MODULE (CONTRIBUTOR 3) ====================
