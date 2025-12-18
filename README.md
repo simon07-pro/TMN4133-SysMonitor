@@ -121,7 +121,7 @@ void getMemoryUsage();
 #### Implementation Details
 1. **Read `/proc/meminfo`** using system calls:
    - Use `open()`, `read()`, `close()`
-   - Parse lines: `MemTotal`, `MemFree`, `MemAvailable`
+   - Parse lines: `MemTotal`, `MemFree`
 
 2. **Calculate Memory Statistics**:
    - Total Memory (KB)
